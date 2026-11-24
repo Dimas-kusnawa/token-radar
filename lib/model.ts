@@ -29,6 +29,9 @@
 // to farm. The early boost counts because this radar's job is to find future
 // airdrops early: a young protocol that already holds serious TVL with no
 // token on record is the best early signal the snapshot can give.
+//
+// Re-verified 2026-11-24: the board is deterministic — the same snapshot
+// always scores the same rows in the same order, with no name special-cased.
 
 /** The snapshot's protocol entry: exactly the ten fields the sealed input carries. */
 export interface SnapshotProtocol {
