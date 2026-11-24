@@ -20,7 +20,7 @@ import { copyFileSync, existsSync, mkdirSync, readFileSync, readdirSync, statSyn
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { boardIssue, buildRadar, dataScript, describeModel, parseSnapshot, summarizeBoard } from './lib/model.ts';
-import { validateBoard } from './lib/validate.ts';
+import { formatFinding, summarizeFindings, validateBoard } from './lib/validate.ts';
 import { buildDossier } from './vendor/makefun-board.ts';
 
 const here = fileURLToPath(new URL('.', import.meta.url));
@@ -59,8 +59,9 @@ if (issue !== null) {
 const findings = validateBoard(board, snapshot);
 if (findings.length > 0) {
   for (const finding of findings) {
-    process.stderr.write(`token radar: validation failed (${finding.check}): ${finding.detail}\n`);
+    process.stderr.write(`${formatFinding(finding)}\n`);
   }
+  process.stderr.write(`${summarizeFindings(findings)}\n`);
   process.exit(1);
 }
 const summary = summarizeBoard(board, snapshot);

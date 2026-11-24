@@ -46,6 +46,33 @@ const MAX_STEP_CHARS = 600;
  * only the known ones). The first failing rule does not stop the rest:
  * the caller gets the whole list, so one fix can answer every finding.
  */
+/**
+ * One finding as one line of text, for the run log: the rule, the row it
+ * failed on (or "board" when the finding is about the whole board), and
+ * the detail. The format is fixed so the log stays greppable: every line
+ * starts with "token radar: validation failed", then the rule in
+ * parentheses, then the detail. A finding about the whole board names
+ * "board" instead of a slug, so a reader can tell at a glance whether
+ * the problem is one row or the board itself.
+ */
+export function formatFinding(finding: BoardFinding): string {
+  const where = finding.slug ?? 'board';
+  return `token radar: validation failed (${finding.check}) on ${where}: ${finding.detail}`;
+}
+
+/**
+ * A list of findings as a short summary, for the run log: how many
+ * findings, and how many distinct rules failed. When there are no
+ * findings the summary says so in one line, so a clean run is visible
+ * in the log instead of silent. The summary never lists the findings
+ * themselves — formatFinding() does that, one line each.
+ */
+export function summarizeFindings(findings: BoardFinding[]): string {
+  if (findings.length === 0) return 'token radar: validation passed, no findings';
+  const rules = new Set(findings.map((f) => f.check));
+  return `token radar: validation found ${findings.length} finding${findings.length === 1 ? '' : 's'} across ${rules.size} rule${rules.size === 1 ? '' : 's'}`;
+}
+
 export function validateBoard(board: BoardRow[], snapshot: Snapshot): BoardFinding[] {
   const findings: BoardFinding[] = [];
 
