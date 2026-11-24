@@ -199,7 +199,21 @@ export function ageDays(asOf: string, listedAt: string | null): number | null {
   return Math.max(0, Math.floor((a - b) / DAY_MS));
 }
 
-/** The multipliers and the implied value one protocol gets under `model`. */
+/**
+ * The multipliers and the implied value one protocol gets under `model`.
+ *
+ * Each multiplier is read off the snapshot alone, in this order:
+ * growth is the seven-day change, clamped to the model's floor and cap so
+ * one wild week cannot dominate the board, then weighted; maturity is the
+ * protocol's age over the model's window, floored, so a protocol that has
+ * run a long time with no token scores more than a new one; chain breadth
+ * is one step per chain up to the cap; the early boost applies only when
+ * the protocol is younger than the model's early age. The base is TVL
+ * times the base multiple, and the implied value is the product, rounded
+ * to a whole dollar and never below one. An unknown age is treated as a
+ * year old: old enough to miss the early boost, young enough to keep most
+ * of its maturity. A missing seven-day change counts as no growth.
+ */
 export function impliedValue(
   protocol: SnapshotProtocol,
   asOf: string,
@@ -284,7 +298,19 @@ function bySlug(protocols: SnapshotProtocol[]): Map<string, SnapshotProtocol> {
   return new Map(protocols.map((p) => [p.slug, p]));
 }
 
-/** The protocols the board ranks, strongest first, with ranks 1..n. */
+/**
+ * The protocols the board ranks, strongest first, with ranks 1..n.
+ *
+ * Order is by implied value, highest first, and the tie-break is the slug,
+ * alphabetically: two protocols with the same implied value always land in
+ * the same order, so the board is the same on every run for the same
+ * snapshot. Ranks are assigned after the sort, 1 for the first row, so a
+ * rank always names the row's place on the sorted board and never the
+ * protocol's place in the snapshot. The watchlist is the floor, not the
+ * whole board: every slug it names is ranked even when it would not pass
+ * isRankable on its own, and every other rankable pre-token protocol joins
+ * it, so the board's early rows are the protocols the watchlist leaves out.
+ */
 export function buildBoard(snapshot: Snapshot, model: ModelConstants = MODEL): BoardRow[] {
   const index = bySlug(snapshot.protocols);
   const watch = new Set(snapshot.watchlist);
@@ -570,6 +596,56 @@ export function boardIssue(board: BoardRow[], snapshot: Snapshot): string | null
     if (!Number.isSafeInteger(r.implied_value_usd) || r.implied_value_usd <= 0) return `${r.slug} has implied value ${r.implied_value_usd}`;
   }
   return null;
+}
+
+/** The board in one paragraph of numbers: how many rows, the top of the board, and the split between watchlist and early rows. */
+export interface BoardSummary {
+  rows: number;
+  watchlist_rows: number;
+  early_rows: number;
+  top_name: string;
+  top_implied_usd: number;
+  fifth_implied_usd: number;
+  median_implied_usd: number;
+  total_implied_usd: number;
+}
+
+/**
+ * The board's summary, for the run log: the top row, the fifth row, the
+ * median row and the total implied value across the board. The median is
+ * the middle row's implied value (the board is already sorted), so the
+ * summary needs no second sort. A board with fewer than five rows still
+ * summarises: the fifth row is the last row, and the median is the middle.
+ */
+export function summarizeBoard(board: BoardRow[], snapshot: Snapshot): BoardSummary {
+  const watchlistRows = board.filter((r) => snapshot.watchlist.includes(r.slug)).length;
+  const sorted = [...board].sort((a, b) => b.implied_value_usd - a.implied_value_usd);
+  const middle = sorted[Math.floor(sorted.length / 2)]!;
+  const fifth = sorted[Math.min(4, sorted.length - 1)]!;
+  return {
+    rows: board.length,
+    watchlist_rows: watchlistRows,
+    early_rows: board.length - watchlistRows,
+    top_name: sorted[0]!.name,
+    top_implied_usd: sorted[0]!.implied_value_usd,
+    fifth_implied_usd: fifth.implied_value_usd,
+    median_implied_usd: middle.implied_value_usd,
+    total_implied_usd: board.reduce((sum, r) => sum + r.implied_value_usd, 0),
+  };
+}
+
+/**
+ * The model in one line of words, for the run log and the dashboard's
+ * "how this ranks" note: the base multiple, the growth weight and the
+ * early boost, the three numbers a reader needs to reproduce any row's
+ * implied value from its TVL, its seven-day change and its age.
+ */
+export function describeModel(model: ModelConstants = MODEL): string {
+  return (
+    `radar-2: implied = TVL x ${model.base_multiple} x (1 + clamped 7d change x ${model.growth_weight}) ` +
+    `x maturity (0.6..1.0 over ${model.maturity_days} days) x chains (1 + ${model.chain_step} per chain, max ${model.chain_cap}) ` +
+    `x early (${model.early_boost} when under ${model.early_age_days} days old)`
+  );
 }
 
 /** A compact data.js: the dashboard's whole dataset as one script, no fetch and no network. */

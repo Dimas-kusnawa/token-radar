@@ -19,7 +19,8 @@
 import { copyFileSync, existsSync, mkdirSync, readFileSync, readdirSync, statSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { boardIssue, buildRadar, dataScript, parseSnapshot } from './lib/model.ts';
+import { boardIssue, buildRadar, dataScript, describeModel, parseSnapshot, summarizeBoard } from './lib/model.ts';
+import { validateBoard } from './lib/validate.ts';
 import { buildDossier } from './vendor/makefun-board.ts';
 
 const here = fileURLToPath(new URL('.', import.meta.url));
@@ -52,6 +53,17 @@ if (issue !== null) {
   process.stderr.write(`token radar: the model wrote a board the gate refuses: ${issue}\n`);
   process.exit(1);
 }
+// A second, independent validation pass: boardIssue() answers the gate's
+// own questions, validateBoard() checks what a reader of the board relies
+// on. Either one failing refuses the board before anything is written.
+const findings = validateBoard(board, snapshot);
+if (findings.length > 0) {
+  for (const finding of findings) {
+    process.stderr.write(`token radar: validation failed (${finding.check}): ${finding.detail}\n`);
+  }
+  process.exit(1);
+}
+const summary = summarizeBoard(board, snapshot);
 
 mkdirSync(out, { recursive: true });
 writeFileSync(join(out, 'board.json'), `${JSON.stringify({ rows: board })}\n`);
@@ -91,5 +103,8 @@ writeFileSync(join(out, 'dossier.json'), buildDossier(out, { text_max_bytes: TEX
 process.stdout.write(
   `token radar: ${snapshot.protocols.length} protocols, ${snapshot.watchlist.length} on the watchlist, ${board.length} rows scored (${radar.early_size} early, ${radar.live_size} live set aside)\n` +
     `token radar: top row is ${board[0]!.name} at $${board[0]!.implied_value_usd} implied value\n` +
+    `token radar: ${describeModel()}\n` +
+    `token radar: board summary — ${summary.rows} rows (${summary.watchlist_rows} watchlist, ${summary.early_rows} early), ` +
+    `top $${summary.top_implied_usd}, 5th $${summary.fifth_implied_usd}, median $${summary.median_implied_usd}, total implied $${summary.total_implied_usd}\n` +
     `token radar: wrote ${join(out, 'board.json')}, ${join(out, 'data.js')}, ${join(out, 'dashboard')} (3 files), ${join(out, 'screenshots')} (${shots.length} images) and ${join(out, 'dossier.json')}\n`,
 );
